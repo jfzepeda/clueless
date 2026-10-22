@@ -1,0 +1,9 @@
+Use case: logo-brand.
+Asset type: a fresh macOS app icon concept for Clueless.
+Primary request: create one polished, distinctive app icon for Clueless, a quiet macOS menu bar audio assistant that turns microphone or system audio into live transcripts, dictation, and helpful answers about a conversation.
+Brand metaphor: a single speech bubble bringing clarity to conversation, with a subtle inner audio waveform suggesting attentive listening and understanding.
+Subject: one simple sculptural ivory speech bubble, formed as a softly rounded compact solid with a short elegant tail at the lower left. A single recessed waveform of three broad rounded vertical bars is integrated into its front surface, illuminated with a restrained soft mint glow. The bars are bold, simple, and legible at small sizes; they are carved into the bubble rather than floating as separate objects.
+Style: beautifully crafted tactile 3D macOS icon, restrained and sophisticated, strong instantly recognizable silhouette at small sizes, matte ceramic-like material, precise soft edges, gentle dimensional lighting.
+Composition: square image, one large centered icon, deep charcoal rounded-square tile with generous clear margins, straight-on with mild depth. Background outside the tile matches the dark charcoal so the artwork is suitable as a square icon source.
+Lighting and palette: warm ivory subject, subtle mint light only within the recessed waveform, deep charcoal background, soft studio highlights and a delicate grounding shadow.
+Constraints: no lettering, no wordmark, no letters, no question mark, no napkin, no moon, no zzz, no robot, no brain, no circuitry, no microphone hardware, no tiny decorative elements, no mockup, no presentation sheet, no watermark. Deliver exactly one finished icon image.
