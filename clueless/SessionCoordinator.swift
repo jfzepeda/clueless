@@ -9,13 +9,27 @@ final class SessionCoordinator {
     var history = TranscriptHistory()
     var responseContext = ResponseContext()
     var importingContext = false
+    var screenReadState: ScreenReadState = .idle
+    var screenReadError: String?
+    var suspendPanelForScreenRead: (() -> Void)?
+    var restorePanelAfterScreenRead: (() -> Void)?
+    private let screenReader: any ScreenReading
+    private var screenReadTask: Task<Void, Never>?
+    private var screenReadID = UUID()
     private var contextRevision = UUID()
     var replies: [AssistantReply] = []
     var errorMessage: String?
     var audioLevel: Float = 0
     var sentSeconds = 0.0
     var intent = ListeningIntent()
-    var showPanel: (() -> Void)?
+    var showPanel: ((_ focus: Bool) -> Void)?
+    var centerPanel: (() -> Void)?
+    var prepareForScreenRead: (() -> Bool)?
+    var historyPresentationID = UUID()
+    func showHistory() {
+        historyPresentationID = UUID()
+        showPanel?(true)
+    }
     var togglePanel: (() -> Void)?
     private let capture = AudioCapture()
     private var realtime: RealtimeTranscriptionClient?
@@ -42,7 +56,8 @@ final class SessionCoordinator {
         }
     }
 
-    init() {
+    init(screenReader: (any ScreenReading)? = nil) {
+        self.screenReader = screenReader ?? ScreenReader()
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in self?.suspended = true; self?.stop(preserveIntent: true, immediate: true) }
@@ -72,8 +87,58 @@ final class SessionCoordinator {
         stopAll(); history = TranscriptHistory(); replies = []; sentSeconds = 0; clearContext()
     }
     func clearContext() {
+        cancelScreenRead()
+        screenReadError = nil
         contextRevision = UUID()
         responseContext = ResponseContext()
+    }
+    func readScreen() {
+        guard settings.mode.supportsChat, !suspended, screenReadTask == nil else { return }
+        guard prepareForScreenRead?() ?? true else {
+            screenReadError = "Finish or cancel the open file dialog before reading the screen."
+            return
+        }
+        screenReadError = nil
+        screenReadState = .selecting
+        let id = UUID()
+        screenReadID = id
+        suspendPanelForScreenRead?()
+        screenReadTask = Task {
+            do {
+                let result = try await screenReader.read { [weak self] state in
+                    guard let self, self.screenReadID == id else { return }
+                    self.screenReadState = state
+                }
+                guard screenReadID == id, !Task.isCancelled else { return }
+                try responseContext.setScreen(result)
+            } catch {
+                guard screenReadID == id, !Task.isCancelled else { return }
+                screenReadError = error is CancellationError ? "Screen reading cancelled. Previous screen context was kept." : error.localizedDescription
+            }
+            guard screenReadID == id else { return }
+            screenReadTask = nil
+            screenReadState = .idle
+            restorePanelAfterScreenRead?()
+        }
+    }
+    func cancelScreenRead() {
+        guard screenReadTask != nil else { return }
+        screenReadID = UUID()
+        screenReadTask?.cancel()
+        screenReader.cancel()
+        screenReadTask = nil
+        screenReadState = .idle
+        screenReadError = "Screen reading cancelled. Previous screen context was kept."
+        restorePanelAfterScreenRead?()
+    }
+    func removeScreenContext() {
+        cancelScreenRead()
+        responseContext.removeScreen()
+        screenReadError = nil
+    }
+    func editScreenText(_ text: String) {
+        do { try responseContext.editScreenText(text); screenReadError = nil }
+        catch { screenReadError = error.localizedDescription }
     }
     func importContext(_ urls: [URL]) {
         guard !importingContext else { return }
@@ -111,6 +176,9 @@ final class SessionCoordinator {
             alert.informativeText = "Audio will be sent directly to OpenAI for transcription. Ensure everyone involved has given the required consent. Raw audio is not saved locally. This permission lasts until you quit clueless."
             alert.addButton(withTitle: "Allow for This Session")
             alert.addButton(withTitle: "Cancel")
+            NSApp.activate()
+            alert.window.level = .modalPanel
+            alert.window.hidesOnDeactivate = false
             guard alert.runModal() == .alertFirstButtonReturn else { intent.stop(); return }
             uploadConsent = true
         }
@@ -138,7 +206,7 @@ final class SessionCoordinator {
                 try Task.checkCancellation()
                 guard token == generation else { return }
                 captureState = .capturing
-                if activeMode.usesAI && settings.openPanel { showPanel?() }
+                if activeMode.usesAI && settings.openPanel { showPanel?(false) }
                 audioTask = Task {
                     do {
                         for try await packet in packets {
@@ -225,6 +293,7 @@ final class SessionCoordinator {
     }
 
     private func stop(preserveIntent: Bool, immediate: Bool, paused: Bool = false, failed: Bool = false) {
+        if immediate { cancelScreenRead() }
         if !preserveIntent { intent.stop() } else { intent.held = false }
         if immediate { cancelResponse(); pendingAutoAnswers.removeAll(); generation = UUID(); realtime?.close() }
         reconnectTask?.cancel(); reconnectTask = nil

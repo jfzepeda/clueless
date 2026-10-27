@@ -4,6 +4,8 @@ import ServiceManagement
 import UniformTypeIdentifiers
 
 struct MenuBarView: View {
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.dismiss) private var dismiss
     @Bindable var session: SessionCoordinator
     var body: some View {
         @Bindable var settings = session.settings
@@ -31,10 +33,25 @@ struct MenuBarView: View {
                 .buttonStyle(.borderedProminent).disabled(session.busy)
             if let error = session.errorMessage { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             Divider()
-            Button("Show / Hide Floating Window") { session.togglePanel?() }
-            Button("Session History") { session.showPanel?() }
+            Button("Show Floating Window") {
+                dismiss()
+                DispatchQueue.main.async {
+                    NSApp.activate()
+                    session.showPanel?(true)
+                }
+            }
+            Button("Center Floating Window on This Screen") { session.centerPanel?() }
+            Button("Session History") { session.showHistory() }
+            if session.settings.mode.supportsChat {
+                Button("Read Screen Region…") { session.readScreen() }.disabled(session.screenReadState != .idle)
+                if session.screenReadState != .idle {
+                    Text("Screen: \(session.screenReadState.rawValue.capitalized)…").font(.caption)
+                    Button("Cancel Screen Reading") { session.cancelScreenRead() }
+                }
+                if let error = session.screenReadError { Text(error).font(.caption).foregroundStyle(.red) }
+            }
             HStack {
-                SettingsLink { Text("Settings…") }
+                Button("Settings…") { NSApp.activate(); openSettings() }
                 Spacer()
                 Button("Stop All") { session.stopAll() }
                 Button("Quit") { NSApp.terminate(nil) }
@@ -45,6 +62,7 @@ struct MenuBarView: View {
 
 struct FloatingPanelView: View {
     @Bindable var session: SessionCoordinator
+    var presentFilePanel: (NSSavePanel, @escaping (NSApplication.ModalResponse) -> Void) -> Void
     @State private var tab = "Transcript"
     @State private var compact = false
     @State private var prompt = ""
@@ -130,6 +148,10 @@ struct FloatingPanelView: View {
             }.font(.caption).padding(12)
             if let error = session.errorMessage { Text(error).font(.caption).foregroundStyle(.red).padding([.horizontal, .bottom]) }
         }.frame(minWidth: 330, minHeight: 150).background(.regularMaterial)
+            .onChange(of: session.historyPresentationID) {
+                tab = "Transcript"
+                compact = false
+            }
     }
     private var contextEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -159,6 +181,40 @@ struct FloatingPanelView: View {
                         .accessibilityLabel("Remove \(file.name)")
                 }
             }
+            screenContextEditor
+        }
+    }
+    private var screenContextEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            Text("Screen Text").font(.headline)
+            Text("Recognized text is automatically used in subsequent responses, including Auto Answer. Images are processed locally. Captures do not update when the screen changes.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Read Screen Region…") { session.readScreen() }
+                    .disabled(!session.settings.mode.supportsChat || session.screenReadState != .idle)
+                if session.screenReadState != .idle {
+                    ProgressView().controlSize(.small)
+                    Text("\(session.screenReadState.rawValue.capitalized)…").font(.caption)
+                    Button("Cancel") { session.cancelScreenRead() }
+                }
+            }
+            if let screen = session.responseContext.screen {
+                HStack {
+                    Text(screen.displayName)
+                    Text(screen.capturedAt, style: .time)
+                }.font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: Binding(get: { session.responseContext.screen?.text ?? "" }, set: { session.editScreenText($0) }))
+                    .frame(minHeight: 140).border(.quaternary)
+                    .accessibilityLabel("Recognized screen text")
+                HStack {
+                    Text("\(screen.text.count) characters").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Copy") { session.copy(screen.text) }
+                    Button("Remove") { session.removeScreenContext() }
+                }
+            }
+            if let error = session.screenReadError { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
         }
     }
     private func importContextFiles() {
@@ -166,7 +222,7 @@ struct FloatingPanelView: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
         panel.allowedContentTypes = [.plainText, .pdf, UTType(filenameExtension: "md") ?? .plainText, UTType(filenameExtension: "markdown") ?? .plainText]
-        panel.begin { result in
+        presentFilePanel(panel) { result in
             guard result == .OK else { return }
             session.importContext(panel.urls)
         }
@@ -183,7 +239,7 @@ struct FloatingPanelView: View {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = "clueless Transcript.txt"
-        panel.begin { result in
+        presentFilePanel(panel) { result in
             guard result == .OK, let url = panel.url else { return }
             do { try session.history.confirmedText.write(to: url, atomically: true, encoding: .utf8) }
             catch { session.errorMessage = error.localizedDescription }
@@ -209,11 +265,10 @@ struct RouterSettingsView: View {
                 }
                 Text("Listening never starts automatically on launch.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Open floating window when listening", isOn: $settings.openPanel)
-                Toggle("Keep floating window on top", isOn: $settings.pinned).onChange(of: settings.pinned, applyPanel)
                 Toggle("Show on all Spaces", isOn: $settings.allSpaces).onChange(of: settings.allSpaces, applyPanel)
                 Toggle("Auto-scroll results", isOn: $settings.autoScroll)
                 LabeledContent("Opacity") { Slider(value: $settings.opacity, in: 0.5...1) }.onChange(of: settings.opacity, applyPanel)
-                Text("History stays in memory until you clear it or quit. Window position is restored automatically.").font(.caption).foregroundStyle(.secondary)
+                Text("History stays in memory until you clear it or quit. Windows stay on top. Show Floating Window preserves its position; use Center Floating Window to move it to the current screen.").font(.caption).foregroundStyle(.secondary)
                 Button("Clear Session History", role: .destructive) { session.clearHistory() }
             }.formStyle(.grouped).tabItem { Label("General", systemImage: "gearshape") }
             Form {
@@ -261,7 +316,8 @@ struct RouterSettingsView: View {
             Form {
                 Text("All shortcuts use Control + Option plus the selected key. Hold activates only while pressed.").font(.callout)
                 ForEach(GlobalHotkeyManager.names, id: \.self) { name in
-                    Picker(name, selection: Binding(get: { settings.shortcuts[name] ?? 49 }, set: { settings.shortcuts[name] = $0 })) {
+                    Picker(name, selection: Binding(get: { settings.shortcuts[name] ?? UInt32.max }, set: { settings.shortcuts[name] = $0 })) {
+                        Text("Unassigned").tag(UInt32.max)
                         ForEach(GlobalHotkeyManager.keys, id: \.1) { Text($0.0).tag($0.1) }
                     }
                 }
@@ -270,7 +326,7 @@ struct RouterSettingsView: View {
                 Text("Registration reports known conflicts. Some shortcuts reserved by macOS or other apps may still take precedence.").font(.caption).foregroundStyle(.secondary)
             }.formStyle(.grouped).tabItem { Label("Shortcuts", systemImage: "keyboard") }
             Form {
-                Text("System audio requires Screen & System Audio Recording permission. Microphone permission is requested only for the Microphone source. Global shortcuts use Carbon and do not monitor typed text.")
+                Text("System audio and Read Screen Region require Screen & System Audio Recording permission. Screen text is recognized locally; screenshots are never saved or uploaded. Recognized text is sent to OpenAI only when generating responses, including Auto Answer. No Accessibility permission is needed for screen reading. Microphone permission is requested only for the Microphone source. Global shortcuts use Carbon and do not monitor typed text.")
                 Button("Screen & System Audio Recording Settings") { openPrivacy("Privacy_ScreenCapture") }
                 Button("Microphone Settings") { openPrivacy("Privacy_Microphone") }
                 Text("Captured audio is sent to OpenAI only in AI modes and after session consent. Virtual Microphone is entirely local. No raw audio or transcript is saved automatically. Exported text is saved only where you choose.")

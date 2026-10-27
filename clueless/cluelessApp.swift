@@ -11,5 +11,6 @@ struct cluelessApp: App {
         Settings {
             RouterSettingsView(session: delegate.session, applyShortcuts: delegate.applyShortcuts, applyPanel: delegate.floating.applySettings)
         }
+        .windowLevel(.floating)
     }
 }

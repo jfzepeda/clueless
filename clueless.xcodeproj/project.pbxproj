@@ -409,12 +409,12 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "clueless captures your microphone only when you choose Microphone as the source.";
-				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "clueless captures system audio for local routing or transcription when you start listening.";
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "clueless captures system audio when you start listening and selected screen regions for local text recognition when you use Read Screen Region.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jfzepeda.clueless;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -447,12 +447,12 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "clueless captures your microphone only when you choose Microphone as the source.";
-				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "clueless captures system audio for local routing or transcription when you start listening.";
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "clueless captures system audio when you start listening and selected screen regions for local text recognition when you use Read Screen Region.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jfzepeda.clueless;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
